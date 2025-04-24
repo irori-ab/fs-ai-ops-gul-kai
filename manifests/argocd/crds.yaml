@@ -9,7 +9,7 @@ spec:
   project: default
   # Git repo source to link argocd to
   source:
-    repoURL: git@github.com:irori-ab/fs-ai-ops-gul-kai.git
+    repoURL: https://github.com/irori-ab/fs-ai-ops-gul-kai.git
     targetRevision: HEAD
     path: manifests/fs-ai-gul
   # K8s cluster to make changes to
