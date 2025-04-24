@@ -257,6 +257,197 @@
           }
         }
       }
+    },
+    "/api/groups": {
+      "get": {
+        "summary": "List Consumer Groups",
+        "description": "Retrieves a list of all consumer group IDs from the Kafka cluster.",
+        "operationId": "listConsumerGroups",
+        "tags": ["Consumer Groups"],
+        "responses": {
+          "200": {
+            "description": "A list of consumer group IDs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": ["my-group-1", "another-group"]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/groups/{groupId}/lag": {
+      "get": {
+        "summary": "Get Consumer Group Lag",
+        "description": "Calculates the lag for a specific consumer group. Lag is the difference between the latest message offset in a partition and the offset committed by the consumer group.",
+        "operationId": "getConsumerGroupLag",
+        "tags": ["Consumer Groups"],
+        "parameters": [
+          {
+            "name": "groupId",
+            "in": "path",
+            "required": true,
+            "description": "The ID of the consumer group.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "topics",
+            "in": "query",
+            "required": false,
+            "description": "Optional comma-separated list of topic names to filter the lag calculation.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Detailed lag information for the consumer group.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "groupId": {
+                      "type": "string"
+                    },
+                    "totalLag": {
+                      "type": "integer",
+                      "format": "int64"
+                    },
+                    "topics": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "properties": {
+                            "lag": {
+                              "type": "integer",
+                              "format": "int64",
+                              "description": "Calculated lag for the partition (-1 if unknown)."
+                            },
+                            "consumerOffset": {
+                              "type": "string",
+                              "description": "The last offset committed by the consumer group."
+                            },
+                            "latestOffset": {
+                              "type": "string",
+                              "description": "The latest offset (high water mark) in the partition."
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "example": {
+                    "groupId": "my-consumer-group",
+                    "totalLag": 150,
+                    "topics": {
+                      "my-topic": {
+                        "0": {
+                          "lag": 100,
+                          "consumerOffset": "500",
+                          "latestOffset": "600"
+                        },
+                        "1": {
+                          "lag": 50,
+                          "consumerOffset": "250",
+                          "latestOffset": "300"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Consumer group not found or not active."
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "summary": "List Kafka Users (Strimzi)",
+        "description": "Retrieves a list of KafkaUser custom resources from the Kubernetes cluster.",
+        "operationId": "listKafkaUsers",
+        "tags": ["Kafka Users"],
+        "responses": {
+          "200": {
+            "description": "A list of Kafka users.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                       "name": { "type": "string" },
+                       "status": { "type": "object", "description": "Status subresource if available" }
+                    }
+                  },
+                  "example": [
+                    { "name": "my-user", "status": { "observedGeneration": 1, "conditions": [{"type": "Ready", "status": "True"}] } },
+                    { "name": "another-app-user", "status": { "observedGeneration": 1, "conditions": [{"type": "Ready", "status": "True"}] } }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error (e.g., failed to connect to Kubernetes API)"
+          }
+        }
+      }
     }
-  }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Topics",
+      "description": "Operations related to Kafka topics"
+    },
+    {
+      "name": "Producer",
+      "description": "Send messages to Kafka topics"
+    },
+    {
+      "name": "Consumer Groups",
+      "description": "Operations related to Kafka consumer groups"
+    },
+    {
+      "name": "Kafka Users",
+      "description": "Operations related to Strimzi KafkaUser custom resources"
+    }
+  ]
 }

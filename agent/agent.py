@@ -83,7 +83,42 @@ tools = [
             "required": ["topicName"]
         }
     },
-    # Add more tools here based on openapi.json (e.g., describe_consumer_groups)
+    {
+        "name": "list_consumer_groups",
+        "description": "Retrieves a list of all consumer group IDs from the Kafka cluster.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "get_consumer_group_lag",
+        "description": "Calculates the lag for a specific consumer group. Lag is the difference between the latest message offset in a partition and the offset committed by the consumer group.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "groupId": {
+                    "type": "string",
+                    "description": "The ID of the consumer group."
+                },
+                "topics": {
+                    "type": "string",
+                    "description": "Optional comma-separated list of topic names to filter the lag calculation."
+                }
+            },
+            "required": ["groupId"]
+        }
+    },
+    {
+        "name": "list_kafka_users",
+        "description": "Retrieves a list of KafkaUser custom resources from the Kubernetes cluster (managed by Strimzi).",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
 ]
 
 # --- Functions to Call MCP Server API ---
@@ -141,6 +176,21 @@ def execute_create_topic(topicName: str, partitions: int = None, replicas: int =
         payload["replicas"] = replicas
     return call_mcp_api("POST", "/api/topics", json_payload=payload)
 
+def execute_list_consumer_groups():
+    """Calls the MCP server to list consumer groups."""
+    return call_mcp_api("GET", "/api/groups")
+
+def execute_get_consumer_group_lag(groupId: str, topics: str = None):
+    """Calls the MCP server to get consumer group lag."""
+    params = {}
+    if topics:
+        params['topics'] = topics # Pass topics as query parameter
+    return call_mcp_api("GET", f"/api/groups/{groupId}/lag", params=params)
+
+def execute_list_kafka_users():
+    """Calls the MCP server to list KafkaUser CRs."""
+    return call_mcp_api("GET", "/api/users")
+
 
 # --- Main Agent Loop ---
 def run_conversation():
@@ -195,7 +245,6 @@ def run_conversation():
                                 )
                             else:
                                 result = {"error": "Missing required arguments for produce_message", "required": ["topic", "value"]}
-                        # Add the elif block for the new tool
                         elif tool_name == "create_topic":
                             if "topicName" in tool_input:
                                 result = execute_create_topic(
@@ -205,24 +254,38 @@ def run_conversation():
                                 )
                             else:
                                 result = {"error": "Missing required argument for create_topic", "required": ["topicName"]}
-                        # Add elif blocks for other tools here
+                        elif tool_name == "list_consumer_groups":
+                            result = execute_list_consumer_groups()
+                        elif tool_name == "get_consumer_group_lag":
+                            if "groupId" in tool_input:
+                                result = execute_get_consumer_group_lag(
+                                    groupId=tool_input["groupId"],
+                                    topics=tool_input.get("topics") # Optional topics
+                                )
+                            else:
+                                result = {"error": "Missing required argument for get_consumer_group_lag", "required": ["groupId"]}
+                        elif tool_name == "list_kafka_users":
+                            result = execute_list_kafka_users()
                         else:
                             print(f"Error: Unknown tool '{tool_name}' requested by Claude.")
                             result = {"error": f"Tool '{tool_name}' not implemented in the agent."}
 
                         print(f"Tool {tool_name} result: {result}")
+                        # Format the content as a JSON string
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_use_id,
-                            "content": [{"type": "json", "json": result}] # Send result back as JSON
-                            # "content": json.dumps(result) # Alternative: send as string
+                            "content": json.dumps(result) # Use json.dumps for the content
                         })
 
-                # Append the original response and the tool results to messages
+                # Append the original assistant message with tool_use requests
                 messages.append({"role": response.role, "content": response.content})
-                messages.append({"role": "user", "content": tool_results})
 
-                # Call Claude again with the tool results
+                # Append a SINGLE user message containing a LIST of all tool results for this turn
+                if tool_results: # Check if there are any results to send
+                    messages.append({"role": "user", "content": tool_results})
+
+                # Call Claude again with the updated messages list
                 print("\nClaude processing tool results...")
                 response = client.messages.create(
                     model=CLAUDE_MODEL,

@@ -1,4 +1,4 @@
-import { Kafka, Producer, Consumer, Admin, KafkaConfig, PartitionAssigners, AssignerProtocol, Assigner } from 'kafkajs';
+import { Kafka, Producer, Consumer, Admin, KafkaConfig, PartitionAssigners, AssignerProtocol, Assigner, GroupDescription, PartitionOffset } from 'kafkajs';
 import { config } from '../config';
 import { getKafkaBootstrapServers } from './k8sService'; // Import the discovery function
 
@@ -138,6 +138,158 @@ export const disconnectKafka = async (): Promise<void> => {
         kafka = null; // Allow re-initialization
     } catch (error) {
         console.error('Error disconnecting Kafka:', error);
+    }
+};
+
+/**
+ * Lists all consumer group IDs in the cluster.
+ * @returns {Promise<string[]>} A promise that resolves with an array of group IDs.
+ */
+export const listConsumerGroups = async (): Promise<string[]> => {
+    const admin = getAdmin();
+    try {
+        // Type for groups inferred or use Awaited<ReturnType<Admin['listGroups']>> if needed
+        const groups = await admin.listGroups();
+        // Add explicit type for group parameter in map
+        return groups.groups.map((group: { groupId: string }) => group.groupId);
+    } catch (error) {
+        console.error('Error listing consumer groups:', error);
+        throw new Error(`Failed to list consumer groups: ${error instanceof Error ? error.message : String(error)}`);
+    }
+};
+
+/**
+ * Fetches the latest committed offsets for a specific consumer group.
+ * @param groupId The ID of the consumer group.
+ * @returns {Promise<any>} The raw offset fetch response (using any as FetchOffsetsResponse was removed).
+ */
+const getConsumerGroupOffsets = async (groupId: string): Promise<any> => { // Changed return type
+    const admin = getAdmin();
+    try {
+        // Fetch offsets for all topics the group is subscribed to
+        return await admin.fetchOffsets({ groupId });
+    } catch (error) {
+        console.error(`Error fetching offsets for group ${groupId}:`, error);
+        throw new Error(`Failed to fetch offsets for group ${groupId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+};
+
+/**
+ * Fetches the latest (high water mark) offsets for specific topics and returns a map.
+ * @param topics An array of topic names.
+ * @returns {Promise<Map<string, Map<number, string>>>} A promise resolving to a map of topic -> partition -> offset.
+ */
+const getTopicOffsetsMap = async (topics: string[]): Promise<Map<string, Map<number, string>>> => {
+    const admin = getAdmin();
+    const topicOffsetsMap = new Map<string, Map<number, string>>();
+    try {
+        for (const topic of topics) {
+            const partitionOffsets = await admin.fetchTopicOffsets(topic);
+            const partitionMap = new Map<number, string>();
+            partitionOffsets.forEach(p => {
+                partitionMap.set(p.partition, p.offset); // p.offset is the high water mark
+            });
+            topicOffsetsMap.set(topic, partitionMap);
+        }
+        return topicOffsetsMap;
+    } catch (error) {
+        console.error(`Error fetching latest offsets for topics ${topics.join(', ')}:`, error);
+        throw new Error(`Failed to fetch latest offsets for topics: ${error instanceof Error ? error.message : String(error)}`);
+    }
+};
+
+/**
+ * Calculates the lag for a specific consumer group, optionally filtered by topics.
+ * @param groupId The ID of the consumer group.
+ * @param filterTopics Optional array of topic names to filter the lag calculation.
+ * @returns {Promise<object>} A promise resolving to an object containing lag information per topic/partition.
+ */
+export const calculateConsumerGroupLag = async (groupId: string, filterTopics?: string[]): Promise<object> => {
+    try {
+        const groupOffsetsResponse = await getConsumerGroupOffsets(groupId);
+        // Add explicit type for t
+        const groupTopics = groupOffsetsResponse.topics.map((t: { topic: string }) => t.topic);
+
+        // Add explicit type for t in filter
+        const topicsToFetch = filterTopics ? groupTopics.filter((t: string) => filterTopics.includes(t)) : groupTopics;
+
+        if (topicsToFetch.length === 0) {
+            return { message: `Consumer group '${groupId}' is not consuming from the specified topics or has no active members.` };
+        }
+
+        // Use the new map-based function
+        const latestOffsetsMap = await getTopicOffsetsMap(topicsToFetch);
+
+        const lagResult: { [topic: string]: { [partition: number]: { lag: number | string; consumerOffset: string; latestOffset: string } } } = {};
+        let totalLag = BigInt(0); // Use BigInt for potentially large lag numbers
+
+        // Calculate lag for each partition the consumer group is assigned
+        // Add explicit type for topicData
+        groupOffsetsResponse.topics.forEach((topicData: { topic: string; partitions: any[] }) => {
+            const topic = topicData.topic;
+            if (!topicsToFetch.includes(topic)) return; // Skip if not in the filter list
+
+            const topicLag: { [partition: number]: { lag: number | string; consumerOffset: string; latestOffset: string } } = {};
+            const latestPartitionOffsets = latestOffsetsMap.get(topic);
+
+            if (!latestPartitionOffsets) {
+                console.warn(`Could not find latest offsets for topic ${topic}`);
+                return; // Skip this topic if latest offsets weren't found
+            }
+
+            // Add explicit type for partitionData
+            topicData.partitions.forEach((partitionData: { partition: number; offset: string }) => {
+                const partition = partitionData.partition;
+                const consumerOffsetStr = partitionData.offset;
+                const latestOffsetStr = latestPartitionOffsets.get(partition);
+
+                // Handle cases where consumer hasn't committed an offset (-1) or latest offset isn't available
+                if (consumerOffsetStr === '-1' || latestOffsetStr === undefined) {
+                    topicLag[partition] = {
+                        lag: 'unknown', // Indicate unknown lag with a string
+                        consumerOffset: consumerOffsetStr,
+                        latestOffset: latestOffsetStr ?? 'N/A'
+                    };
+                } else {
+                    try {
+                        const consumerOffset = BigInt(consumerOffsetStr);
+                        const latestOffset = BigInt(latestOffsetStr);
+                        // Ensure lag is not negative
+                        const partitionLag = latestOffset > consumerOffset ? latestOffset - consumerOffset : BigInt(0);
+                        topicLag[partition] = {
+                            lag: partitionLag.toString(), // Store lag as string
+                            consumerOffset: consumerOffsetStr,
+                            latestOffset: latestOffsetStr
+                        };
+                        totalLag += partitionLag;
+                    } catch (e) {
+                         console.error(`Error converting offsets to BigInt for topic ${topic} partition ${partition}: ${e}`);
+                         topicLag[partition] = {
+                            lag: 'error', // Indicate calculation error
+                            consumerOffset: consumerOffsetStr,
+                            latestOffset: latestOffsetStr ?? 'N/A'
+                        };
+                    }
+                }
+            });
+            if (Object.keys(topicLag).length > 0) {
+                 lagResult[topic] = topicLag;
+            }
+        });
+
+        return {
+            groupId: groupId,
+            totalLag: totalLag.toString(), // Return total lag as string
+            topics: lagResult
+        };
+
+    } catch (error) {
+        console.error(`Error calculating lag for group ${groupId}:`, error);
+        // Check if the error indicates the group doesn't exist or is inactive
+        if (error instanceof Error && (error.message.includes('The group id does not exist') || error.message.includes('GROUP_ID_NOT_FOUND') || error.message.includes('COORDINATOR_NOT_AVAILABLE'))) {
+             return { error: `Consumer group '${groupId}' not found or is not active.` };
+        }
+        throw new Error(`Failed to calculate lag for group ${groupId}: ${error instanceof Error ? error.message : String(error)}`);
     }
 };
 

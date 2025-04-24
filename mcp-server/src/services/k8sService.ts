@@ -6,9 +6,7 @@ const STRIMZI_GROUP = 'kafka.strimzi.io';
 const STRIMZI_VERSION = 'v1beta2'; // Or v1beta1 depending on your Strimzi version
 const KAFKA_RESOURCE_PLURAL = 'kafkas';
 const KAFKA_TOPIC_RESOURCE_PLURAL = 'kafkatopics';
-
-// Removed the unused K8sService class and its methods (getKafkaPods, getKafkaDeployment, etc.)
-// as they were causing errors and are not used by the current server logic.
+const KAFKA_USER_RESOURCE_PLURAL = 'kafkausers'; // Added for KafkaUser
 
 /**
  * Discovers the Kafka bootstrap servers from the Strimzi Kafka resource in Kubernetes.
@@ -154,3 +152,44 @@ export const createKafkaTopicResource = async (topicName: string, partitions = 1
         throw new Error(message);
     }
 };
+
+/**
+ * Lists KafkaUser custom resources in the configured namespace.
+ * Uses the CustomObjectsApi directly.
+ * @returns {Promise<object[]>} A promise that resolves with an array of KafkaUser resource items.
+ * @throws {Error} If listing fails.
+ */
+export const listKafkaUsers = async (): Promise<object[]> => {
+    const kc = new KubeConfig();
+    kc.loadFromDefault();
+    const k8sCustomObjectsApi = kc.makeApiClient(CustomObjectsApi);
+
+    try {
+        console.log(`Listing KafkaUsers in namespace '${config.kubernetes.kafkaClusterNamespace}'`);
+        // Correct call signature for listNamespacedCustomObject
+        const response = await k8sCustomObjectsApi.listNamespacedCustomObject(
+            STRIMZI_GROUP,
+            STRIMZI_VERSION,
+            config.kubernetes.kafkaClusterNamespace,
+            KAFKA_USER_RESOURCE_PLURAL
+            // Optionally add labelSelector: `strimzi.io/cluster=${config.kubernetes.kafkaClusterName}` if needed
+        );
+
+        // Access the items array from the response body
+        const userList = (response.body as any)?.items || [];
+        console.log(`Found ${userList.length} KafkaUsers.`);
+        return userList;
+
+    } catch (error: any) {
+        let message = `Failed to list KafkaUsers in namespace '${config.kubernetes.kafkaClusterNamespace}'`;
+        if (error.response?.body?.message) {
+            message += `: ${error.response.body.message}`;
+        } else if (error instanceof Error) {
+            message += `: ${error.message}`;
+        }
+        console.error(`Error listing KafkaUsers:`, error.response?.body || error);
+        throw new Error(message);
+    }
+};
+
+// Add functions for get, create, delete KafkaUser resources later if needed

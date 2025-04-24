@@ -1,21 +1,28 @@
-import { Router } from 'express';
-import * as controllers from '../controllers';
+import express from 'express';
+import {
+    listTopics,
+    createTopic,
+    produceMessages,
+    listConsumerGroups,
+    getConsumerGroupLag,
+    listKafkaUsers // Import the new controller
+} from '../controllers';
 
-const router = Router();
+const router = express.Router();
 
-// Define API routes and link them to controller functions
+// Kafka Topic Routes
+router.get('/topics', listTopics);
+router.post('/topics', createTopic);
 
-// GET /topics - List all Kafka topics
-router.get('/topics', controllers.listTopics);
+// Kafka Message Production Route
+router.post('/produce', produceMessages);
 
-// POST /topics - Create a new Kafka topic (via Strimzi)
-router.post('/topics', controllers.createTopic);
+// Kafka Consumer Group Routes
+router.get('/groups', listConsumerGroups);
+router.get('/groups/:groupId/lag', getConsumerGroupLag);
 
-// POST /produce - Produce messages to a topic
-router.post('/produce', controllers.produceMessages);
-
-// GET /consumer-groups - Describe consumer groups
-router.get('/consumer-groups', controllers.describeConsumerGroups);
+// Kafka User Routes (Strimzi CRs)
+router.get('/users', listKafkaUsers); // Add the new route
 
 // Add more routes as needed
 
