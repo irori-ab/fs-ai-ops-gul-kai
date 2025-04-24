@@ -5,7 +5,9 @@ import os
 import sys
 
 # --- Configuration ---
-MCP_SERVER_URL = "http://localhost:3000"
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:3000")  # Default to local MCP server
+GITHUB_MCP_SERVER_URL = "https://api.github.com"  # GitHub MCP server URL
+USE_GITHUB_MCP = os.getenv("USE_GITHUB_MCP", "false").lower() == "true"  # Toggle via environment variable
 CLAUDE_MODEL = "claude-3-5-sonnet-20241022"
 
 # --- Anthropic Client Setup ---
@@ -89,10 +91,21 @@ tools = [
 # --- Functions to Call MCP Server API ---
 def call_mcp_api(method, endpoint, json_payload=None, params=None):
     """Generic function to call the MCP server API."""
-    url = f"{MCP_SERVER_URL}{endpoint}"
+    base_url = GITHUB_MCP_SERVER_URL if USE_GITHUB_MCP else MCP_SERVER_URL
+    url = f"{base_url}{endpoint}"
+    headers = {}
+
+    if USE_GITHUB_MCP:
+        github_token = os.getenv("GITHUB_TOKEN")
+        if not github_token:
+            return {"error": "GitHub token not set", "details": "Please set the GITHUB_TOKEN environment variable."}
+        headers["Authorization"] = f"Bearer {github_token}"
+
     try:
-        response = requests.request(method, url, json=json_payload, params=params, timeout=10) # Added timeout
-        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
+        response = requests.request(
+            method, url, json=json_payload, params=params, headers=headers, timeout=10
+        )
+        response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
         # Handle cases where response might be empty (e.g., 201 No Content)
         if response.status_code == 204 or not response.content:
             return {"status_code": response.status_code, "message": "Request successful, no content returned."}
@@ -141,6 +154,18 @@ def execute_create_topic(topicName: str, partitions: int = None, replicas: int =
         payload["replicas"] = replicas
     return call_mcp_api("POST", "/api/topics", json_payload=payload)
 
+# Add the execute_action function
+def execute_action(action, payload):
+    """
+    Sends an action and payload to the MCP server and returns the response.
+    """
+    try:
+        response = requests.post(f"{MCP_SERVER_URL}/agent/execute", json={"action": action, "payload": payload})
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Error communicating with MCP server: {e}")
+        return None
 
 # --- Main Agent Loop ---
 def run_conversation():
