@@ -68,32 +68,60 @@ provider "helm" {
 # FOR ARGOCD
 #------------
 
-data "kubectl_file_documents" "namespace" {
+data "kubectl_file_documents" "namespace-argocd" {
   content = file("../manifests/argocd/namespace.yaml")
 }
 
 data "kubectl_file_documents" "argocd" {
-  content = file("../manifests/argocd/install.yaml")
-}
-
-data "kubectl_file_documents" "fs-ai-gul" {
   content = file("../manifests/argocd/crds.yaml")
 }
 
-resource "kubectl_manifest" "namespace" {
-  count              = length(data.kubectl_file_documents.namespace.documents)
-  yaml_body          = element(data.kubectl_file_documents.namespace.documents, count.index)
+data "kubectl_file_documents" "fs-ai-gul" {
+  content = file("../manifests/argocd/config.yaml")
+}
+
+resource "kubectl_manifest" "namespace-argocd" {
+  count              = length(data.kubectl_file_documents.namespace-argocd.documents)
+  yaml_body          = element(data.kubectl_file_documents.namespace-argocd.documents, count.index)
   override_namespace = "argocd"
 }
 
 resource "kubectl_manifest" "argocd" {
   depends_on = [
-    kubectl_manifest.namespace,
+    kubectl_manifest.namespace-argocd,
   ]
   count              = length(data.kubectl_file_documents.argocd.documents)
   yaml_body          = element(data.kubectl_file_documents.argocd.documents, count.index)
   override_namespace = "argocd"
 }
+
+#------------
+# FOR STRIMZI
+#------------
+
+data "kubectl_file_documents" "namespace-kafka" {
+  content = file("../manifests/strimzi/namespace.yaml")
+}
+
+data "kubectl_file_documents" "strimzi" {
+  content = file("../manifests/strimzi/crds.yaml")
+}
+
+resource "kubectl_manifest" "namespace-kafka" {
+  count              = length(data.kubectl_file_documents.namespace-kafka.documents)
+  yaml_body          = element(data.kubectl_file_documents.namespace-kafka.documents, count.index)
+  override_namespace = "kafka"
+}
+
+resource "kubectl_manifest" "strimzi" {
+  depends_on = [
+    kubectl_manifest.namespace-kafka,
+  ]
+  count              = length(data.kubectl_file_documents.strimzi.documents)
+  yaml_body          = element(data.kubectl_file_documents.strimzi.documents, count.index)
+  override_namespace = "kafka"
+}
+
 
 resource "kubectl_manifest" "fs-ai-gul" {
   depends_on = [
