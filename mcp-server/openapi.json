@@ -1,0 +1,262 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "MCP Kafka Server API",
+    "version": "1.0.0",
+    "description": "API for interacting with a Strimzi Kafka cluster via an MCP server."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local development server"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health Check",
+        "description": "Returns the operational status of the server.",
+        "responses": {
+          "200": {
+            "description": "Server is operational",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "UP"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/topics": {
+      "get": {
+        "summary": "List Kafka Topics",
+        "description": "Retrieves a list of all topic names from the connected Kafka cluster.",
+        "responses": {
+          "200": {
+            "description": "A list of topic names.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "topics": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "example": [
+                        "topic1",
+                        "my-new-topic"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error (e.g., failed to connect to Kafka)"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Kafka Topic (via Strimzi)",
+        "description": "Creates a new Kafka topic by creating a KafkaTopic custom resource in Kubernetes.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "topicName": {
+                    "type": "string",
+                    "description": "The desired name for the new topic.",
+                    "example": "my-new-topic-from-api"
+                  },
+                  "partitions": {
+                    "type": "integer",
+                    "description": "Number of partitions for the topic (default: 1).",
+                    "example": 3
+                  },
+                  "replicas": {
+                    "type": "integer",
+                    "description": "Replication factor for the topic (default: 1).",
+                    "example": 1
+                  }
+                },
+                "required": [
+                  "topicName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "KafkaTopic resource created successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "example": {
+                    "kind": "KafkaTopic",
+                    "metadata": {
+                      "name": "my-new-topic-from-api"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (e.g., missing topicName)."
+          },
+          "409": {
+            "description": "Conflict (Topic resource already exists)."
+          },
+          "500": {
+            "description": "Internal server error (e.g., failed to interact with Kubernetes API)."
+          }
+        }
+      }
+    },
+    "/api/produce": {
+      "post": {
+        "summary": "Produce Messages to Topic",
+        "description": "Sends one or more messages to the specified Kafka topic.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "topic": {
+                    "type": "string",
+                    "description": "The target topic name.",
+                    "example": "my-new-topic"
+                  },
+                  "messages": {
+                    "type": "array",
+                    "description": "An array of messages to produce.",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string",
+                          "description": "Optional message key.",
+                          "example": "messageKey123"
+                        },
+                        "value": {
+                          "type": "string",
+                          "description": "The message content.",
+                          "example": "Hello Kafka!"
+                        }
+                      },
+                      "required": [
+                        "value"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "topic",
+                  "messages"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Messages produced successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Messages produced successfully"
+                    },
+                    "recordMetadata": {
+                      "type": "array",
+                      "example": [
+                        {
+                          "topicName": "my-new-topic",
+                          "partition": 0,
+                          "errorCode": 0,
+                          "offset": "10"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (e.g., missing topic or messages)."
+          },
+          "500": {
+            "description": "Internal server error (e.g., failed to produce to Kafka)."
+          }
+        }
+      }
+    },
+    "/api/consumer-groups": {
+      "get": {
+        "summary": "Describe Consumer Groups",
+        "description": "Retrieves details about specified consumer groups from Kafka.",
+        "parameters": [
+          {
+            "name": "groupIds",
+            "in": "query",
+            "required": true,
+            "description": "Comma-separated list of consumer group IDs to describe.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "my-consumer-group,another-group"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Details of the specified consumer groups.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "example": {
+                    "groups": [
+                      {
+                        "groupId": "my-consumer-group",
+                        "state": "Stable"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request (e.g., missing groupIds query parameter)."
+          },
+          "500": {
+            "description": "Internal server error (e.g., failed to describe groups in Kafka)."
+          }
+        }
+      }
+    }
+  }
+}
