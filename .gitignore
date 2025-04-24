@@ -160,3 +160,9 @@ ehthumbs.db
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# TF stuff
+*.terraform
+*.lock*
+*.tfstate
+*.tfstate.*
