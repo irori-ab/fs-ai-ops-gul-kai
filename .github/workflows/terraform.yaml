@@ -1,15 +1,16 @@
-name: Create Kubernetes Cluster and Install Argo & Strimzi
+name: Terraform Operations
 
 on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'Action to perform: plan or apply'
+        description: 'Action to perform: plan, apply, or destroy'
         required: true
         type: choice
         options:
-          - plan
-          - apply
+          - plan # Generates a plan
+          - apply # Applies the generated plan (requires 'plan' first)
+          - destroy # Destroys the infrastructure
         default: 'plan'
       branch:
         description: 'Branch to checkout and run against (default: main)'
@@ -19,6 +20,7 @@ on:
 jobs:
   plan:
     name: "Terraform Plan"
+    if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,11 +39,11 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.11.3
+          terraform_version: 1.11.3 # Consider using a newer Terraform version if possible
 
       - name: Terraform init
         id: init
-        run: terraform init
+        run: terraform init -input=false
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
@@ -51,7 +53,8 @@ jobs:
 
       - name: Terraform plan
         id: plan
-        run: terraform plan -no-color -input=false -out=tfplan
+        # Generate a plan for creation/update. This is skipped by 'apply' if action=='destroy'
+        run: terraform plan -no-color -input=false -out=tfplan 
         continue-on-error: true # Continue to generate text plan even if plan has diffs/errors reported by exit code 2
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
@@ -70,6 +73,7 @@ jobs:
           exit 1
 
       - name: Upload Terraform Plan Artifacts
+        if: github.event.inputs.action == 'plan' || github.event.inputs.action == 'apply'
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan-${{ github.run_id }} 
@@ -130,5 +134,47 @@ jobs:
         id: apply
         if: steps.check_plan.outcome == 'success'
         run: terraform apply -input=false tfplan
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+  destroy:
+    name: "Terraform Destroy"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+
+    environment:
+      name: live
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./terraform 
+
+    steps:
+      - name: Checkout the repository to the runner
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.11.3 
+
+      - name: Terraform init
+        id: init
+        run: terraform init -input=false
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: Terraform Plan Destroy
+        id: plan-destroy
+        run: terraform plan -destroy -no-color -input=false
+        env:
+           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+
+      - name: Terraform Destroy
+        id: destroy
+        run: terraform destroy -auto-approve -input=false
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
