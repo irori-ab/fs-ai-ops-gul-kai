@@ -1,6 +1,7 @@
 name: Create Kubernetes Cluster and Install Argo & Strimzi
 
 on:
+  pull_request:
   push:
     branches:
       - main
