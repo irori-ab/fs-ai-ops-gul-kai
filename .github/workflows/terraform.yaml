@@ -7,7 +7,20 @@ on:
       - main
     paths:
       - terraform/**
-  workflow_dispatch:  # Manual trigger support
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform: plan or apply'
+        required: true
+        type: choice
+        options:
+          - plan
+          - apply
+        default: 'plan'
+      branch:
+        description: 'Branch to checkout and run against (default: main)'
+        required: false
+        default: 'main'
 
 jobs:
   terraform:
@@ -21,6 +34,8 @@ jobs:
     steps:
       - name: Checkout the repository to the runner
         uses: actions/checkout@v2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref }}
 
       - name: Setup Terraform with specified version on the runner
         uses: hashicorp/setup-terraform@v2
@@ -30,6 +45,8 @@ jobs:
       - name: Terraform init
         id: init
         run: terraform init
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
       - name: Terraform validate
         id: validate
@@ -37,18 +54,34 @@ jobs:
 
       - name: Terraform plan
         id: plan
-        if: github.event_name == 'pull_request'
-        run: terraform plan -no-color -input=false
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')
+        run: terraform plan -no-color -input=false -out=tfplan
         continue-on-error: true
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
 
-      - name: Terraform Plan Status
-        if: steps.plan.outcome == 'failure'
-        run: exit 1
+      - name: Terraform Plan Status Check
+        if: (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan')) && steps.plan.outcome == 'failure'
+        run: |
+          echo "Terraform plan failed!"
+          exit 1
+      
+      - name: Upload Terraform Plan Artifact
+        if: steps.plan.outcome == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'plan'))
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}
+          path: ./terraform/tfplan
+          retention-days: 7
 
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: terraform apply -auto-approve -input=false
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'apply')
+        run: |
+          echo "Generating plan before applying..."
+          # Generate a plan and save it to tfplan
+          terraform plan -out=tfplan -input=false
+          echo "Applying generated plan..."
+          # Apply the plan file just created
+          terraform apply -input=false tfplan
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
