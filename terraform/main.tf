@@ -6,6 +6,7 @@ resource "google_container_cluster" "main" {
   location           = var.region
   initial_node_count = 1
   remove_default_node_pool = true
+  deletion_protection = false
   timeouts {
     create = "30m"
     update = "40m"
