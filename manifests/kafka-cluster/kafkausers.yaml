@@ -6,8 +6,6 @@ metadata:
   labels:
     strimzi.io/cluster: kai-kafka-cluster
 spec:
-  authentication:
-    type: scram-sha-512 # Use SCRAM-SHA-512 authentication
   authorization:
     type: simple # Use built-in simple authorization (ACLs)
     acls:

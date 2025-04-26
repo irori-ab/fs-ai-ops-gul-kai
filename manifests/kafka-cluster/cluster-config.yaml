@@ -15,8 +15,6 @@ spec:
         port: 9093
         type: internal
         tls: true
-        authentication:
-          type: scram-sha-512
     config:
       # These internal topic settings must match the total number of 'broker' role replicas (which is 1 here)
       offsets.topic.replication.factor: 1
@@ -43,9 +41,13 @@ spec:
     - controller # This node acts as a controller
     - broker     # This node also acts as a broker
   storage:
-    type: persistent-claim
-    size: 25Gi # Storage for the combined controller/broker node
-    deleteClaim: false # Keeps PVC if node pool / cluster is deleted
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        deleteClaim: false
+        kraftMetadata: shared
   # Add resources, jvmOptions etc. here if needed for this pool
   # resources:
   #   requests:
