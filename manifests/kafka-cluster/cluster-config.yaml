@@ -8,8 +8,7 @@ metadata:
     strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 3.9.0
-    replicas: 1
+    version: 3.9.0 # Specify desired Kafka version (ensure Strimzi 0.45 supports this)
     listeners:
       # Internal TLS listener on 9093 with SCRAM-SHA-512 authentication
       - name: tls
@@ -18,26 +17,43 @@ spec:
         tls: true
         authentication:
           type: scram-sha-512
-      # Example internal plain listener (optional)
-      # - name: plain
-      #   port: 9092
-      #   type: internal
-      #   tls: false
     config:
-      # Required KRaft configurations - Strimzi sets defaults based on replicas,
-      # but explicitly setting these based on replica=1 is good practice.
-      offsets.topic.replication.factor: 1       # Must be <= number of brokers
-      transaction.state.log.replication.factor: 1 # Must be <= number of brokers
-      transaction.state.log.min.isr: 1          # Must be <= number of brokers
-      default.replication.factor: 1             # Default for auto-created topics
-      min.insync.replicas: 1                    # Minimum ISR MUST be <= replica count
-      # inter.broker.protocol.version: "3.9" # Strimzi usually sets this automatically based on spec.kafka.version
-    storage:
-      type: persistent-claim
-      # Storage for combined controller/broker node
-      size: 25Gi # Adjust storage size as needed (might need slightly more than ZK+Broker)
-      deleteClaim: false # Keeps PVC if cluster is deleted
+      # These internal topic settings must match the total number of 'broker' role replicas (which is 1 here)
+      offsets.topic.replication.factor: 1
+      transaction.state.log.replication.factor: 1
+      transaction.state.log.min.isr: 1
+      default.replication.factor: 1 # Default for auto-created topics
+      min.insync.replicas: 1      # Minimum ISR MUST be <= broker replica count
+      # KRaft relies on metadata versioning - Strimzi manages this based on Kafka version
   # NO zookeeper section when KRaft is enabled
   entityOperator:
     topicOperator: {} # Enable Topic Operator
     userOperator: {}  # Enable User Operator
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaNodePool
+metadata:
+  name: controller-broker # Name for this node pool
+  namespace: kafka         # Same namespace as Kafka resource
+  labels:
+    strimzi.io/cluster: kai-kafka-cluster
+spec:
+  replicas: 1 # Single node in this pool. INCREASE TO 3+ FOR PRODUCTION/HA!
+  roles:
+    - controller # This node acts as a controller
+    - broker     # This node also acts as a broker
+  storage:
+    type: persistent-claim
+    size: 25Gi # Storage for the combined controller/broker node
+    deleteClaim: false # Keeps PVC if node pool / cluster is deleted
+  # Add resources, jvmOptions etc. here if needed for this pool
+  # resources:
+  #   requests:
+  #     memory: 4Gi
+  #     cpu: "1"
+  #   limits:
+  #     memory: 4Gi
+  #     cpu: "2"
+  # jvmOptions:
+  #   "-Xms": "2g"
+  #   "-Xmx": "2g"
