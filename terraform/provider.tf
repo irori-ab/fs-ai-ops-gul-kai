@@ -76,7 +76,7 @@ data "kubectl_file_documents" "argocd" {
   content = file("../manifests/argocd/crds.yaml")
 }
 
-data "kubectl_file_documents" "fs-ai-gul" {
+data "kubectl_file_documents" "argocd_config" {
   content = file("../manifests/argocd/config.yaml")
 }
 
@@ -123,11 +123,11 @@ resource "kubectl_manifest" "strimzi" {
 }
 
 
-resource "kubectl_manifest" "fs-ai-gul" {
+resource "kubectl_manifest" "argocd_config" {
   depends_on = [
     kubectl_manifest.argocd,
   ]
-  count              = length(data.kubectl_file_documents.fs-ai-gul.documents)
-  yaml_body          = element(data.kubectl_file_documents.fs-ai-gul.documents, count.index)
+  count              = length(data.kubectl_file_documents.argocd_config.documents)
+  yaml_body          = element(data.kubectl_file_documents.argocd_config.documents, count.index)
   override_namespace = "argocd"
 }

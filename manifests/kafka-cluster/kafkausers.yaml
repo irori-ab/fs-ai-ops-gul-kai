@@ -1,0 +1,46 @@
+apiVersion: kafka.strimzi.io/v1beta2
+kind: KafkaUser
+metadata:
+  name: test-user
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: kai-kafka-cluster
+spec:
+  authentication:
+    type: scram-sha-512 # Use SCRAM-SHA-512 authentication
+  authorization:
+    type: simple # Use built-in simple authorization (ACLs)
+    acls:
+      - resource:
+          type: topic
+          name: test-topic
+          patternType: literal
+        operations: # Adjust operations as needed
+          - Read
+          - Write
+          - Create
+          - Describe
+          - Alter
+          - Delete
+          - DescribeConfigs
+          - AlterConfigs
+        host: "*"
+      # Allow operations on consumer groups (needed for consumers)
+      - resource:
+          type: group
+          name: "*" # Allow access to any consumer group (can be restricted)
+          patternType: literal
+        operations:
+          - Read
+          - Describe
+        host: "*"
+      # KRaft specific permissions might be needed depending on client operations,
+      # especially if interacting with metadata directly, but often not required for basic produce/consume.
+      # Example (IF NEEDED): Allow describing cluster resource
+      # - resource:
+      #     type: cluster
+      #     name: kafka-cluster # Special name for cluster resource
+      #     patternType: literal
+      #   operations:
+      #     - Describe
+      #   host: "*"

@@ -1,4 +1,4 @@
-# fs-ai-ops-ljusgul-kai
+# fs-ai-ops-gul-kai
 Kafka AI - Firestarter 2025
 
 ## Overview
@@ -21,6 +21,23 @@ This project enables interaction with a Strimzi-managed Kafka cluster running on
         *   Create topics using the Strimzi `KafkaTopic` custom resource.
     *   Serves its API documentation via Swagger UI at `/api-docs`.
     *   Can connect to Kafka using brokers discovered via Kubernetes or specified via the `KAFKA_BROKERS` environment variable.
+
+## Accessing the cluster & ArgoCD
+
+```bash
+#Generate the kube credentials
+gcloud container clusters get-credentials fs-ai-gul --location=europe-north1
+
+##ARGO CD
+# Port forward service to get access to WEB UI
+kubectl port-forward service/argocd-server 8443:https -n argocd
+
+#Fetching the initial password
+argocd admin initial-password -n argocd
+
+#Login (can be done via UI as well)
+argocd login localhost:8080 --username admin --password <ARGOCD_PASSWORD>
+```
 
 ## Setup & Installation
 
