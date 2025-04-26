@@ -1,16 +1,13 @@
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaTopic
 metadata:
-  name: test-topic
+  name: my-topic
   namespace: kafka
   labels:
     strimzi.io/cluster: kai-kafka-cluster
 spec:
-  partitions: 3 # Number of partitions for the topic
-  replicas: 1    # Number of replicas - MUST be <= number of Kafka brokers (spec.kafka.replicas)
-                 # Increase to e.g., 3 if you increase brokers to 3.
+  partitions: 1
+  replicas: 1
   config:
-    # min.insync.replicas: 1 # Strimzi calculates default based on replicas, but explicit is fine
-    # retention.ms: 604800000 # 7 days (optional)
-    # segment.bytes: 1073741824 # 1 GB (optional)
-    min.insync.replicas: 1 # Minimum ISR MUST be <= replica count
+    retention.ms: 7200000
+    segment.bytes: 1073741824

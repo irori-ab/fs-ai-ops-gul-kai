@@ -1,44 +1,39 @@
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaUser
 metadata:
-  name: test-user
+  name: my-user
   namespace: kafka
   labels:
     strimzi.io/cluster: kai-kafka-cluster
 spec:
+  authentication:
+    type: tls
   authorization:
-    type: simple # Use built-in simple authorization (ACLs)
+    type: simple
     acls:
+      # Example consumer Acls for topic my-topic using consumer group my-group
       - resource:
           type: topic
-          name: test-topic
+          name: my-topic
           patternType: literal
-        operations: # Adjust operations as needed
-          - Read
-          - Write
-          - Create
+        operations:
           - Describe
-          - Alter
-          - Delete
-          - DescribeConfigs
-          - AlterConfigs
+          - Read
         host: "*"
-      # Allow operations on consumer groups (needed for consumers)
       - resource:
           type: group
-          name: "*" # Allow access to any consumer group (can be restricted)
+          name: my-group
           patternType: literal
         operations:
           - Read
-          - Describe
         host: "*"
-      # KRaft specific permissions might be needed depending on client operations,
-      # especially if interacting with metadata directly, but often not required for basic produce/consume.
-      # Example (IF NEEDED): Allow describing cluster resource
-      # - resource:
-      #     type: cluster
-      #     name: kafka-cluster # Special name for cluster resource
-      #     patternType: literal
-      #   operations:
-      #     - Describe
-      #   host: "*"
+      # Example Producer Acls for topic my-topic
+      - resource:
+          type: topic
+          name: my-topic
+          patternType: literal
+        operations:
+          - Create
+          - Describe
+          - Write
+        host: "*"
