@@ -23,6 +23,10 @@ resource "google_container_node_pool" "node-pool" {
   location   = var.region
   node_count = 1
 
+  depends_on = [
+    google_container_cluster.main
+  ]
+
   autoscaling {
     min_node_count = var.min_count
     max_node_count = var.max_count
